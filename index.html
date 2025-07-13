@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>論理回路学習支援システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            overscroll-behavior: none;
+        }
+        .gate-button, #toggle-toolbar, .challenge-button {
+            transition: all 0.2s ease-in-out;
+        }
+        .gate-button.selected {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+            border-color: #3B82F6;
+            background-color: #2563EB; /* blue-600 */
+        }
+        canvas {
+            cursor: crosshair;
+            background-color: #1f2937;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        #left-panel {
+            transition: margin-left 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex h-screen overflow-hidden">
+
+    <!-- 左パネル (ツールボックス) -->
+    <div id="left-panel" class="w-full md:w-72 bg-gray-800 shadow-lg flex flex-col z-20">
+        <div id="toolbar" class="p-4 flex flex-col space-y-4 overflow-y-auto h-full">
+            <h1 class="text-2xl font-bold text-center text-blue-400">ツールボックス</h1>
+            <div class="flex-grow space-y-3">
+                <button id="challenge-select-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg">
+                    課題に挑戦
+                </button>
+                <div>
+                    <h2 class="text-lg font-semibold mb-2 text-gray-300 border-b border-gray-600 pb-1">基本ツール</h2>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="tool-select" class="gate-button bg-gray-700 p-2 rounded-lg border-2 border-transparent hover:bg-gray-600">選択</button>
+                        <button id="tool-delete" class="gate-button bg-gray-700 p-2 rounded-lg border-2 border-transparent hover:bg-red-600">削除</button>
+                    </div>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold mb-2 text-gray-300 border-b border-gray-600 pb-1">入力/出力</h2>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button data-type="INPUT" class="gate-button bg-blue-600 p-2 rounded-lg border-2 border-transparent hover:bg-blue-500">入力</button>
+                        <button data-type="OUTPUT" class="gate-button bg-purple-600 p-2 rounded-lg border-2 border-transparent hover:bg-purple-500">出力</button>
+                    </div>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold mb-2 text-gray-300 border-b border-gray-600 pb-1">論理ゲート</h2>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button data-type="AND" class="gate-button bg-green-600 p-2 rounded-lg border-2 border-transparent hover:bg-green-500">AND</button>
+                        <button data-type="OR" class="gate-button bg-green-600 p-2 rounded-lg border-2 border-transparent hover:bg-green-500">OR</button>
+                        <button data-type="NOT" class="gate-button bg-green-600 p-2 rounded-lg border-2 border-transparent hover:bg-green-500">NOT</button>
+                        <button data-type="NAND" class="gate-button bg-green-600 p-2 rounded-lg border-2 border-transparent hover:bg-green-500">NAND</button>
+                        <button data-type="NOR" class="gate-button bg-green-600 p-2 rounded-lg border-2 border-transparent hover:bg-green-500">NOR</button>
+                        <button data-type="XOR" class="gate-button bg-green-600 p-2 rounded-lg border-2 border-transparent hover:bg-green-500">XOR</button>
+                    </div>
+                </div>
+            </div>
+            <button id="clear-button" class="w-full bg-red-700 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg mt-4">
+                全消去
+            </button>
+        </div>
+    </div>
+
+    <!-- 右エリア -->
+    <div class="flex-1 flex flex-col">
+        <!-- 課題表示フィールド -->
+        <div id="challenge-header" class="bg-gray-800 p-3 shadow-md hidden z-10 border-b-2 border-gray-700">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h3 id="challenge-title" class="text-lg font-bold text-amber-400"></h3>
+                    <p id="challenge-description" class="text-gray-300 mt-1 text-xs"></p>
+                </div>
+                <div class="flex-shrink-0 ml-4 w-1/3 max-w-sm">
+                    <div id="challenge-result" class="mb-2 text-sm font-semibold bg-gray-900 p-2 rounded-md min-h-[40px]"></div>
+                    <div class="flex space-x-2">
+                        <button id="check-answer-btn" class="challenge-button w-full bg-green-600 hover:bg-green-500 text-white font-bold py-1 px-3 rounded text-sm">チェック</button>
+                        <button id="exit-challenge-btn" class="challenge-button w-full bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-3 rounded text-sm">やめる</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 作業フィールド (Canvas) -->
+        <div class="flex-1 relative">
+            <button id="toggle-toolbar" class="absolute top-4 left-4 z-30 bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full shadow-lg">
+                <svg id="toggle-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
+            <canvas id="circuitCanvas" class="w-full h-full"></canvas>
+            <div id="message-box" class="absolute top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-md shadow-lg hidden transition-opacity duration-300 z-40"></div>
+        </div>
+    </div>
+
+    <!-- 課題選択モーダル -->
+    <div id="challenge-modal" class="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center hidden z-50">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-2xl w-11/12 max-w-lg">
+            <h2 class="text-2xl font-bold mb-6 text-center text-blue-400">課題を選択</h2>
+            <div id="challenge-list" class="space-y-4"></div>
+            <button id="close-modal-btn" class="mt-8 w-full bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">閉じる</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('circuitCanvas');
+        const ctx = canvas.getContext('2d');
+        const leftPanel = document.getElementById('left-panel');
+        const toolbar = document.getElementById('toolbar');
+        const toggleToolbarBtn = document.getElementById('toggle-toolbar');
+        const toggleIcon = document.getElementById('toggle-icon');
+        const clearButton = document.getElementById('clear-button');
+        const messageBox = document.getElementById('message-box');
+        
+        const challengeSelectBtn = document.getElementById('challenge-select-btn');
+        const challengeModal = document.getElementById('challenge-modal');
+        const challengeList = document.getElementById('challenge-list');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const challengeHeader = document.getElementById('challenge-header');
+        const challengeTitle = document.getElementById('challenge-title');
+        const challengeDescription = document.getElementById('challenge-description');
+        const challengeResult = document.getElementById('challenge-result');
+        const checkAnswerBtn = document.getElementById('check-answer-btn');
+        const exitChallengeBtn = document.getElementById('exit-challenge-btn');
+
+        let components = [], wires = [];
+        let currentTool = 'select', selectedComponentType = '';
+        let selectedComponent = null, draggingComponent = null;
+        let isWiring = false, wireStartComponent = null, wireStartNode = null;
+        let nextId = 0;
+        let pan = { x: 0, y: 0 }, scale = 1;
+        let isPanning = false, isSpacePanning = false, panStart = { x: 0, y: 0 };
+        let mouseCanvasPos = { x: 0, y: 0 }; // ★ マウスのキャンバス座標を保持
+        let currentChallenge = null;
+
+        const GATE_CONFIG = {
+            INPUT:  { minInputs: 0, outputs: 1, width: 40, baseHeight: 40, color: '#3B82F6', canAddInputs: false },
+            OUTPUT: { minInputs: 1, outputs: 0, width: 40, baseHeight: 40, color: '#8B5CF6', canAddInputs: false },
+            AND:    { minInputs: 2, outputs: 1, width: 60, baseHeight: 40, color: '#10B981', canAddInputs: true },
+            OR:     { minInputs: 2, outputs: 1, width: 60, baseHeight: 40, color: '#10B981', canAddInputs: true },
+            NOT:    { minInputs: 1, outputs: 1, width: 60, baseHeight: 40, color: '#10B981', canAddInputs: false },
+            NAND:   { minInputs: 2, outputs: 1, width: 70, baseHeight: 40, color: '#10B981', canAddInputs: true },
+            NOR:    { minInputs: 2, outputs: 1, width: 70, baseHeight: 40, color: '#10B981', canAddInputs: true },
+            XOR:    { minInputs: 2, outputs: 1, width: 70, baseHeight: 40, color: '#10B981', canAddInputs: true },
+        };
+        const NODE_RADIUS = 5, NOT_CIRCLE_RADIUS = 6, ADD_INPUT_BTN_RADIUS = 8;
+        const ON_COLOR = '#FBBF24', OFF_COLOR = '#6B7281';
+
+        const challenges = [
+            {
+                id: 'half-adder', title: '半加算器 (Half Adder)',
+                description: '2つの入力(A, B)を加算し、和(S)と桁上がり(C)を出力する回路を作成してください。入力と出力には対応するラベルを設定してください。',
+                testCases: [
+                    { inputs: { 'A': false, 'B': false }, outputs: { 'S': false, 'C': false } },
+                    { inputs: { 'A': true,  'B': false }, outputs: { 'S': true,  'C': false } },
+                    { inputs: { 'A': false, 'B': true  }, outputs: { 'S': true,  'C': false } },
+                    { inputs: { 'A': true,  'B': true  }, outputs: { 'S': false, 'C': true } },
+                ]
+            },
+            {
+                id: 'full-adder', title: '全加算器 (Full Adder)',
+                description: '3つの入力(A, B, Cin)を加算し、和(S)と桁上がり(Cout)を出力する回路を作成してください。半加算器を2つ使うと実現できます。',
+                testCases: [
+                    { inputs: { 'A': false, 'B': false, 'Cin': false }, outputs: { 'S': false, 'Cout': false } },
+                    { inputs: { 'A': true,  'B': false, 'Cin': false }, outputs: { 'S': true,  'Cout': false } },
+                    { inputs: { 'A': false, 'B': true,  'Cin': false }, outputs: { 'S': true,  'Cout': false } },
+                    { inputs: { 'A': true,  'B': true,  'Cin': false }, outputs: { 'S': false, 'Cout': true } },
+                    { inputs: { 'A': false, 'B': false, 'Cin': true  }, outputs: { 'S': true,  'Cout': false } },
+                    { inputs: { 'A': true,  'B': false, 'Cin': true  }, outputs: { 'S': false, 'Cout': true } },
+                    { inputs: { 'A': false, 'B': true,  'Cin': true  }, outputs: { 'S': false, 'Cout': true } },
+                    { inputs: { 'A': true,  'B': true,  'Cin': true  }, outputs: { 'S': true,  'Cout': true } },
+                ]
+            }
+        ];
+
+        function init() {
+            resizeCanvas();
+            setupEventListeners();
+            updateToolSelection();
+            populateChallengeList();
+            gameLoop();
+        }
+
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            draw();
+        }
+
+        function setupEventListeners() {
+            window.addEventListener('resize', resizeCanvas);
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
+            
+            toolbar.addEventListener('click', (e) => {
+                if (e.target.tagName !== 'BUTTON') return;
+                const type = e.target.dataset.type;
+                if (type) {
+                    currentTool = 'add'; selectedComponentType = type;
+                } else if (e.target.id === 'tool-select') {
+                    currentTool = 'select'; selectedComponentType = '';
+                } else if (e.target.id === 'tool-delete') {
+                    currentTool = 'delete'; selectedComponentType = '';
+                }
+                updateToolSelection();
+            });
+
+            toggleToolbarBtn.addEventListener('click', () => {
+                const isCollapsed = leftPanel.classList.toggle('hidden');
+                toggleIcon.innerHTML = isCollapsed ? 
+                    `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>` :
+                    `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>`;
+                setTimeout(resizeCanvas, 300);
+            });
+
+            clearButton.addEventListener('click', () => {
+                components = []; wires = []; updateCircuit();
+                showMessage("すべての回路を削除しました", 2000);
+            });
+
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('dblclick', handleDoubleClick);
+            canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+            canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+            challengeSelectBtn.addEventListener('click', () => challengeModal.classList.remove('hidden'));
+            closeModalBtn.addEventListener('click', () => challengeModal.classList.add('hidden'));
+            checkAnswerBtn.addEventListener('click', checkChallengeAnswer);
+            exitChallengeBtn.addEventListener('click', exitChallengeMode);
+        }
+        
+        function updateToolSelection() {
+            document.querySelectorAll('#toolbar button').forEach(btn => btn.classList.remove('selected'));
+            let buttonToSelect = (currentTool === 'add') ? document.querySelector(`#toolbar button[data-type="${selectedComponentType}"]`) : document.getElementById(`tool-${currentTool}`);
+            if (buttonToSelect) buttonToSelect.classList.add('selected');
+        }
+
+        function handleKeyDown(e) {
+            if (e.code === 'Space' && !isSpacePanning) {
+                isSpacePanning = true;
+                canvas.style.cursor = 'grab';
+            }
+        }
+
+        function handleKeyUp(e) {
+            if (e.code === 'Space') {
+                isSpacePanning = false;
+                canvas.style.cursor = 'crosshair';
+                isPanning = false;
+            }
+        }
+
+        function handleWheel(e) {
+            e.preventDefault();
+            const canvasPos = getCanvasMousePos(e);
+            const zoomFactor = 1.1;
+            const oldScale = scale;
+            
+            if (e.deltaY < 0) scale *= zoomFactor;
+            else scale /= zoomFactor;
+            scale = Math.max(0.2, Math.min(scale, 4));
+
+            pan.x = canvasPos.x - (canvasPos.x - pan.x) * (scale / oldScale);
+            pan.y = canvasPos.y - (canvasPos.y - pan.y) * (scale / oldScale);
+        }
+
+        function handleMouseDown(e) {
+            const canvasPos = getCanvasMousePos(e);
+            if (e.button === 2 || isSpacePanning) {
+                isPanning = true;
+                panStart.x = canvasPos.x - pan.x; panStart.y = canvasPos.y - pan.y;
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+            isPanning = false;
+
+            const worldPos = getWorldMousePos(canvasPos);
+
+            if (selectedComponent && GATE_CONFIG[selectedComponent.type].canAddInputs) {
+                const btnPos = getAddInputBtnPosition(selectedComponent);
+                if (Math.hypot(worldPos.x - btnPos.x, worldPos.y - btnPos.y) <= ADD_INPUT_BTN_RADIUS) {
+                    addInputToComponent(selectedComponent);
+                    return;
+                }
+            }
+            
+            for (const comp of components) {
+                const node = getNodeAt(worldPos, comp);
+                if (node) {
+                    if (node.type === 'output') {
+                        isWiring = true; wireStartComponent = comp; wireStartNode = node;
+                    } else if (node.type === 'input' && isWiring) {
+                        if (!wires.some(w => w.to === comp.id && w.toNodeIndex === node.index)) {
+                            createWire(wireStartComponent, comp, node.index);
+                        }
+                        isWiring = false; wireStartComponent = null;
+                    }
+                    return;
+                }
+            }
+            
+            if (isWiring) { isWiring = false; wireStartComponent = null; return; }
+
+            const clickedComponent = getComponentAt(worldPos);
+
+            if (currentTool === 'select') {
+                selectedComponent = clickedComponent;
+                if (clickedComponent) {
+                    if (e.altKey) cloneComponent(clickedComponent, worldPos);
+                    else if (clickedComponent.type === 'INPUT') {
+                        clickedComponent.state = !clickedComponent.state;
+                        updateCircuit();
+                    } else draggingComponent = clickedComponent;
+                }
+            } else if (currentTool === 'add' && selectedComponentType) {
+                createComponent(selectedComponentType, worldPos.x, worldPos.y);
+            } else if (currentTool === 'delete') {
+                if (clickedComponent) deleteComponent(clickedComponent);
+                else {
+                    const clickedWire = getWireAt(worldPos);
+                    if (clickedWire) deleteWire(clickedWire);
+                }
+            }
+        }
+        
+        function handleMouseMove(e) {
+            mouseCanvasPos = getCanvasMousePos(e); // ★ マウス座標を常に更新
+            if (isPanning) {
+                pan.x = mouseCanvasPos.x - panStart.x;
+                pan.y = mouseCanvasPos.y - panStart.y;
+                return;
+            }
+            
+            const worldPos = getWorldMousePos(mouseCanvasPos);
+            if (draggingComponent) {
+                draggingComponent.x = worldPos.x;
+                draggingComponent.y = worldPos.y;
+            }
+
+            const component = getComponentAt(worldPos);
+            const node = component ? getNodeAt(worldPos, component) : null;
+            if (isSpacePanning) canvas.style.cursor = 'grab';
+            else if (isWiring) canvas.style.cursor = 'crosshair';
+            else if (currentTool === 'delete' && (component || getWireAt(worldPos))) canvas.style.cursor = 'not-allowed';
+            else if (node) canvas.style.cursor = 'pointer';
+            else if (component) canvas.style.cursor = 'move';
+            else canvas.style.cursor = 'crosshair';
+        }
+
+        function handleMouseUp(e) {
+            if (isPanning) {
+                isPanning = false;
+                canvas.style.cursor = isSpacePanning ? 'grab' : 'crosshair';
+            }
+            draggingComponent = null;
+        }
+
+        function handleDoubleClick(e) {
+            const worldPos = getWorldMousePos(getCanvasMousePos(e));
+            const comp = getComponentAt(worldPos);
+            if (comp && (comp.type === 'INPUT' || comp.type === 'OUTPUT')) {
+                const newLabel = prompt(`"${comp.label || comp.type}" の新しいラベルを入力してください:`, comp.label || '');
+                if (newLabel !== null) comp.label = newLabel.trim();
+            }
+        }
+
+        function gameLoop() {
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function draw() {
+            ctx.save();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.translate(pan.x, pan.y);
+            ctx.scale(scale, scale);
+            
+            drawGrid();
+            
+            wires.forEach(drawWire);
+            if (isWiring) drawWiringLine();
+            components.forEach(drawComponent);
+            
+            ctx.restore();
+        }
+
+        function drawGrid() {
+            const gridSize = 20;
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+            ctx.lineWidth = 1 / scale;
+
+            const view = {
+                x1: -pan.x / scale, y1: -pan.y / scale,
+                x2: (canvas.width - pan.x) / scale,
+                y2: (canvas.height - pan.y) / scale
+            };
+
+            for (let x = Math.floor(view.x1 / gridSize) * gridSize; x < view.x2; x += gridSize) {
+                ctx.moveTo(x, view.y1); ctx.lineTo(x, view.y2);
+            }
+            for (let y = Math.floor(view.y1 / gridSize) * gridSize; y < view.y2; y += gridSize) {
+                ctx.moveTo(view.x1, y); ctx.lineTo(view.x2, y);
+            }
+            ctx.stroke();
+        }
+        
+        function drawComponent(comp) {
+            const config = GATE_CONFIG[comp.type];
+            ctx.save();
+            ctx.translate(comp.x, comp.y);
+            ctx.fillStyle = config.color;
+            ctx.strokeStyle = (selectedComponent === comp) ? ON_COLOR : '#9CA3AF';
+            ctx.lineWidth = 2 / scale;
+            drawGateShape(comp);
+            ctx.restore();
+            drawNodes(comp);
+            if (selectedComponent === comp && config.canAddInputs) drawAddInputBtn(comp);
+        }
+
+        function drawGateShape(comp) {
+            const { type, width, height, label } = comp;
+            const w2 = width / 2, h2 = height / 2;
+            ctx.beginPath();
+            switch (type) {
+                case 'INPUT': case 'OUTPUT':
+                    ctx.arc(0, 0, w2, 0, 2 * Math.PI);
+                    ctx.fill(); ctx.stroke();
+                    if (type === 'OUTPUT') {
+                        ctx.fillStyle = comp.state ? ON_COLOR : OFF_COLOR;
+                        ctx.beginPath(); ctx.arc(0, 0, w2 - 8, 0, 2 * Math.PI); ctx.fill();
+                    }
+                    ctx.fillStyle = 'white'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.font = `bold ${12/scale}px Noto Sans JP`;
+                    ctx.fillText(label || (type === 'INPUT' ? 'IN' : 'OUT'), 0, 0);
+                    break;
+                case 'AND':
+                    ctx.moveTo(-w2, -h2); ctx.lineTo(0, -h2);
+                    ctx.arc(0, 0, h2, -Math.PI / 2, Math.PI / 2);
+                    ctx.lineTo(-w2, h2); ctx.closePath();
+                    break;
+                case 'NAND':
+                    ctx.moveTo(-w2, -h2); ctx.lineTo(0, -h2);
+                    ctx.arc(0, 0, h2, -Math.PI / 2, Math.PI / 2);
+                    ctx.lineTo(-w2, h2); ctx.closePath();
+                    ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(h2 + NOT_CIRCLE_RADIUS, 0, NOT_CIRCLE_RADIUS, 0, 2 * Math.PI);
+                    break;
+                case 'OR':
+                    ctx.moveTo(-w2, -h2); ctx.quadraticCurveTo(0, -h2, w2, 0);
+                    ctx.quadraticCurveTo(0, h2, -w2, h2); ctx.quadraticCurveTo(-w2 / 2, 0, -w2, -h2);
+                    break;
+                case 'NOR':
+                    ctx.moveTo(-w2, -h2); ctx.quadraticCurveTo(0, -h2, w2 - NOT_CIRCLE_RADIUS * 2, 0);
+                    ctx.quadraticCurveTo(0, h2, -w2, h2); ctx.quadraticCurveTo(-w2 / 2, 0, -w2, -h2);
+                    ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(w2 - NOT_CIRCLE_RADIUS, 0, NOT_CIRCLE_RADIUS, 0, 2 * Math.PI);
+                    break;
+                case 'XOR':
+                    ctx.moveTo(-w2 - 8, -h2); ctx.quadraticCurveTo(-w2 / 2 - 8, 0, -w2 - 8, h2);
+                    ctx.stroke(); ctx.beginPath();
+                    ctx.moveTo(-w2, -h2); ctx.quadraticCurveTo(0, -h2, w2, 0);
+                    ctx.quadraticCurveTo(0, h2, -w2, h2); ctx.quadraticCurveTo(-w2 / 2, 0, -w2, -h2);
+                    break;
+                case 'NOT':
+                    ctx.moveTo(-w2, -h2); ctx.lineTo(w2 - NOT_CIRCLE_RADIUS * 2, 0);
+                    ctx.lineTo(-w2, h2); ctx.closePath();
+                    ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(w2 - NOT_CIRCLE_RADIUS, 0, NOT_CIRCLE_RADIUS, 0, 2 * Math.PI);
+                    break;
+            }
+            ctx.fill(); ctx.stroke();
+        }
+        
+        function drawNodes(comp) {
+            for (let i = 0; i < comp.inputs; i++) {
+                const pos = getInputNodePosition(comp, i);
+                ctx.beginPath(); ctx.arc(pos.x, pos.y, NODE_RADIUS, 0, 2 * Math.PI);
+                ctx.fillStyle = '#4B5563'; ctx.fill();
+            }
+            const config = GATE_CONFIG[comp.type];
+            for (let i = 0; i < config.outputs; i++) {
+                const pos = getOutputNodePosition(comp, i);
+                ctx.beginPath(); ctx.arc(pos.x, pos.y, NODE_RADIUS, 0, 2 * Math.PI);
+                ctx.fillStyle = comp.state ? ON_COLOR : OFF_COLOR; ctx.fill();
+            }
+        }
+
+        function drawAddInputBtn(comp) {
+            const pos = getAddInputBtnPosition(comp);
+            const radius = ADD_INPUT_BTN_RADIUS / scale;
+            ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
+            ctx.fillStyle = '#4ADE80'; ctx.fill();
+            ctx.strokeStyle = 'white'; ctx.lineWidth = 2 / scale;
+            ctx.moveTo(pos.x - radius / 2, pos.y); ctx.lineTo(pos.x + radius / 2, pos.y);
+            ctx.moveTo(pos.x, pos.y - radius / 2); ctx.lineTo(pos.x, pos.y + radius / 2);
+            ctx.stroke();
+        }
+
+        function drawWire(wire) {
+            const fromComp = components.find(c => c.id === wire.from);
+            const toComp = components.find(c => c.id === wire.to);
+            if (!fromComp || !toComp) return;
+            const startPos = getOutputNodePosition(fromComp, wire.fromNodeIndex);
+            const endPos = getInputNodePosition(toComp, wire.toNodeIndex);
+            ctx.beginPath(); ctx.moveTo(startPos.x, startPos.y);
+            ctx.bezierCurveTo(startPos.x + 50, startPos.y, endPos.x - 50, endPos.y, endPos.x, endPos.y);
+            ctx.strokeStyle = fromComp.state ? ON_COLOR : OFF_COLOR;
+            ctx.lineWidth = 3 / scale; ctx.stroke();
+        }
+        
+        function drawWiringLine() {
+            if (!wireStartComponent) return;
+            const worldPos = getWorldMousePos(mouseCanvasPos); // ★ 保持した座標を使用
+            const startPos = getOutputNodePosition(wireStartComponent, wireStartNode.index);
+            const endPos = worldPos;
+            ctx.beginPath(); ctx.moveTo(startPos.x, startPos.y);
+            ctx.bezierCurveTo(startPos.x + 50, startPos.y, endPos.x - 50, endPos.y, endPos.x, endPos.y);
+            ctx.strokeStyle = ON_COLOR; ctx.lineWidth = 3 / scale; ctx.setLineDash([5 / scale, 5 / scale]);
+            ctx.stroke(); ctx.setLineDash([]);
+        }
+
+        function createComponent(type, x, y) {
+            const config = GATE_CONFIG[type];
+            const newComp = {
+                id: nextId++, type, x, y,
+                width: config.width, height: config.baseHeight,
+                inputs: config.minInputs, state: false,
+                inputStates: Array(config.minInputs).fill(false),
+                label: ''
+            };
+            components.push(newComp);
+            updateCircuit();
+            return newComp;
+        }
+
+        function cloneComponent(sourceComp, worldPos) {
+            const newComp = createComponent(sourceComp.type, worldPos.x, worldPos.y);
+            newComp.inputs = sourceComp.inputs;
+            newComp.height = sourceComp.height;
+            newComp.inputStates = [...sourceComp.inputStates];
+            selectedComponent = newComp; draggingComponent = newComp;
+            updateCircuit();
+        }
+        
+        function addInputToComponent(comp) {
+            comp.inputs++;
+            comp.height = Math.max(GATE_CONFIG[comp.type].baseHeight, 20 + comp.inputs * 20);
+            comp.inputStates.push(false);
+            updateCircuit();
+        }
+
+        function deleteComponent(compToDelete) {
+            components = components.filter(c => c.id !== compToDelete.id);
+            wires = wires.filter(w => w.from !== compToDelete.id && w.to !== compToDelete.id);
+            updateCircuit();
+        }
+
+        function createWire(fromComp, toComp, toNodeIndex) {
+            wires.push({ id: nextId++, from: fromComp.id, fromNodeIndex: 0, to: toComp.id, toNodeIndex: toNodeIndex });
+            updateCircuit();
+        }
+        
+        function deleteWire(wireToDelete) {
+            wires = wires.filter(w => w.id !== wireToDelete.id);
+            updateCircuit();
+        }
+
+        function updateCircuit() {
+            const maxIterations = components.length * 2 + 10;
+            let iterations = 0, changed = true;
+            while (changed && iterations < maxIterations) {
+                changed = false;
+                components.forEach(comp => { if (comp.type !== 'INPUT') comp.inputStates.fill(false); });
+                wires.forEach(wire => {
+                    const fromComp = components.find(c => c.id === wire.from);
+                    const toComp = components.find(c => c.id === wire.to);
+                    if (fromComp && toComp && toComp.inputStates && toComp.inputStates[wire.toNodeIndex] !== undefined) {
+                        toComp.inputStates[wire.toNodeIndex] = fromComp.state;
+                    }
+                });
+                components.forEach(comp => {
+                    const oldState = comp.state;
+                    const inputs = comp.inputStates;
+                    let newState = oldState;
+                    switch (comp.type) {
+                        case 'INPUT': break;
+                        case 'OUTPUT': newState = inputs[0] || false; break;
+                        case 'AND': newState = inputs.length > 0 && inputs.every(i => i); break;
+                        case 'OR': newState = inputs.some(i => i); break;
+                        case 'NOT': newState = !inputs[0]; break;
+                        case 'NAND': newState = !(inputs.length > 0 && inputs.every(i => i)); break;
+                        case 'NOR': newState = !inputs.some(i => i); break;
+                        case 'XOR': newState = (inputs.filter(i => i).length % 2) === 1; break;
+                    }
+                    if (newState !== oldState) { comp.state = newState; changed = true; }
+                });
+                iterations++;
+            }
+            if (iterations >= maxIterations) showMessage("回路が不安定です。フィードバックループを確認してください。");
+        }
+        
+        function getCanvasMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+
+        function getWorldMousePos(canvasPos) {
+            return { x: (canvasPos.x - pan.x) / scale, y: (canvasPos.y - pan.y) / scale };
+        }
+
+        function getComponentAt(worldPos) {
+            for (let i = components.length - 1; i >= 0; i--) {
+                const comp = components[i];
+                const w2 = comp.width / 2, h2 = comp.height / 2;
+                if (worldPos.x >= comp.x - w2 && worldPos.x <= comp.x + w2 &&
+                    worldPos.y >= comp.y - h2 && worldPos.y <= comp.y + h2) {
+                    return comp;
+                }
+            }
+            return null;
+        }
+
+        function getNodeAt(worldPos, comp) {
+            const nodeRadiusWorld = NODE_RADIUS / scale;
+            for (let i = 0; i < comp.inputs; i++) {
+                const nodePos = getInputNodePosition(comp, i);
+                if (Math.hypot(worldPos.x - nodePos.x, worldPos.y - nodePos.y) <= nodeRadiusWorld)
+                    return { type: 'input', index: i, component: comp };
+            }
+            const config = GATE_CONFIG[comp.type];
+            for (let i = 0; i < config.outputs; i++) {
+                const nodePos = getOutputNodePosition(comp, i);
+                if (Math.hypot(worldPos.x - nodePos.x, worldPos.y - nodePos.y) <= nodeRadiusWorld)
+                    return { type: 'output', index: i, component: comp };
+            }
+            return null;
+        }
+        
+        function getWireAt(worldPos) { return null; }
+
+        function getInputNodePosition(comp, index) {
+            const spacing = comp.height / (comp.inputs + 1);
+            let xOffset = -comp.width / 2;
+            if (comp.type === 'XOR') xOffset -= 8;
+            return { x: comp.x + xOffset, y: comp.y - comp.height / 2 + spacing * (index + 1) };
+        }
+
+        function getOutputNodePosition(comp, index) {
+            const config = GATE_CONFIG[comp.type];
+            const spacing = comp.height / (config.outputs + 1);
+            let xOffset = comp.width / 2;
+            if (['NAND', 'NOR', 'NOT'].includes(comp.type)) xOffset += NOT_CIRCLE_RADIUS;
+            return { x: comp.x + xOffset, y: comp.y - comp.height / 2 + spacing * (index + 1) };
+        }
+
+        function getAddInputBtnPosition(comp) {
+            return { x: comp.x, y: comp.y - comp.height / 2 - (ADD_INPUT_BTN_RADIUS + 5) / scale };
+        }
+
+        function showMessage(text, duration = 3000) {
+            messageBox.textContent = text;
+            messageBox.classList.remove('hidden');
+            setTimeout(() => { messageBox.classList.add('hidden'); }, duration);
+        }
+
+        function populateChallengeList() {
+            challengeList.innerHTML = '';
+            challenges.forEach(challenge => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full text-left bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-lg challenge-button';
+                btn.textContent = challenge.title;
+                btn.onclick = () => startChallenge(challenge);
+                challengeList.appendChild(btn);
+            });
+        }
+
+        function startChallenge(challenge) {
+            currentChallenge = challenge;
+            challengeModal.classList.add('hidden');
+            challengeHeader.classList.remove('hidden');
+            challengeTitle.textContent = challenge.title;
+            challengeDescription.textContent = challenge.description;
+            challengeResult.innerHTML = '回路を組んで「回答をチェック」を押してください。';
+            components = []; wires = [];
+            pan = { x: canvas.width / 4, y: canvas.height / 4 }; scale = 1;
+        }
+
+        function exitChallengeMode() {
+            currentChallenge = null;
+            challengeHeader.classList.add('hidden');
+        }
+
+        function checkChallengeAnswer() {
+            if (!currentChallenge) return;
+            const inputComps = {}, outputComps = {};
+            components.forEach(c => {
+                if (c.type === 'INPUT' && c.label) inputComps[c.label] = c;
+                if (c.type === 'OUTPUT' && c.label) outputComps[c.label] = c;
+            });
+            const requiredInputs = Object.keys(currentChallenge.testCases[0].inputs);
+            const requiredOutputs = Object.keys(currentChallenge.testCases[0].outputs);
+            for (const label of requiredInputs) {
+                if (!inputComps[label]) {
+                    challengeResult.innerHTML = `<span class="text-red-400">エラー: ラベルが「${label}」の入力が見つかりません。</span>`;
+                    return;
+                }
+            }
+             for (const label of requiredOutputs) {
+                if (!outputComps[label]) {
+                    challengeResult.innerHTML = `<span class="text-red-400">エラー: ラベルが「${label}」の出力が見つかりません。</span>`;
+                    return;
+                }
+            }
+            for (const testCase of currentChallenge.testCases) {
+                for (const label in testCase.inputs) inputComps[label].state = testCase.inputs[label];
+                updateCircuit();
+                for (const label in testCase.outputs) {
+                    if (outputComps[label].state !== testCase.outputs[label]) {
+                        let hint = 'ヒント: ';
+                        const inputStates = [];
+                        for (const l in testCase.inputs) inputStates.push(`${l}=${testCase.inputs[l] ? 1 : 0}`);
+                        hint += `${inputStates.join(', ')} の時、`;
+                        hint += `出力「${label}」が ${outputComps[label].state ? 1 : 0} になっています。`;
+                        hint += `(期待する値: ${testCase.outputs[label] ? 1 : 0})`;
+                        hint += '<br>どこが違うか、信号の流れを追ってみましょう。';
+                        challengeResult.innerHTML = `<span class="text-yellow-400">${hint}</span>`;
+                        return;
+                    }
+                }
+            }
+            challengeResult.innerHTML = '<span class="text-green-400">素晴らしい！全てのテストケースに合格しました！</span>';
+        }
+
+        init();
+    </script>
+</body>
+</html>
